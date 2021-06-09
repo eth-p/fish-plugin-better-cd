@@ -37,4 +37,5 @@ function cd -d "Change the current working directory"
 	
 	# Default to the original behaviour.
 	builtin cd $argv
+	return $status
 end
