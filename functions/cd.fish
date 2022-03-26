@@ -16,7 +16,6 @@ function cd -d "Change the current working directory"
 		# If the path starts with ":/", it's relative to the repo top-level.
 		if [ "$argv[1]" = ":" ] || [ (string sub $argv[1] --length=2) = ":/" ]
 		
-			
 			# If not, let's try finding it relative to the top-level. 
 			set -l target_path (string sub $argv[1] --start=3)
 			set -l repo_root (__ethp_cd_repo_root)
@@ -36,50 +35,52 @@ function cd -d "Change the current working directory"
 			return $status
 		end
 
-		# If fzf is installed and it can find a directory, go there.
-		if [ "$better_cd_disable_fzf" != "true" ] && command -vq fzf && command -vq fd
-			set candidates (__bettercd_candidates $argv[1])
+		# Use fuzzy matching.
+		set candidates (
+			begin
+				__bettercd_candidates_fzf $argv[1]
+				__bettercd_candidates_z $argv[1]
+			end | sort -u
+		)
 
-			# If there are no candidates, return early.
-			if [ (count $candidates) -eq 0 ]
-				builtin cd $argv
-				return $status
-			end
+		# If there are no candidates, return early.
+		if [ (count $candidates) -eq 0 ]
+			builtin cd $argv
+			return $status
+		end
 
-			# If there is only a single candidate, use that.
-			if [ (count $candidates) -eq 1 ]
-				builtin cd $candidates[1]
-				return $status
-			end
-
-			# If there are multiple and they're not all children of a parent path, let the user select.
-			set -l cut_length (string length $candidates[1])
-			for candidate in $candidates[2..]
-				if [ "$candidates[1]/" != (string sub --length=$cut_length $candidate)/ ]
-					set -l user_selected ""
-
-					if [ "$better_cd_disable_fzf_tiebreak" != true ]
-						set user_selected (
-							printf "%s\n" $candidates \
-							| fzf --reverse --height=20% --min-height=7 \
-							  --info=inline --header="Multiple paths matched...")
-					end
-
-					if [ -z "$user_selected" ]
-						builtin cd $argv
-						return $status
-					end
-
-					builtin cd "$user_selected"
-					return $status
-				end
-			end
-
-			# At this point, they're all children of a parent. Select the parent.
+		# If there is only a single candidate, use that.
+		if [ (count $candidates) -eq 1 ]
 			builtin cd $candidates[1]
 			return $status
 		end
-		
+
+		# If there are multiple and they're not all children of a parent path, let the user select.
+		set -l cut_length (string length $candidates[1])
+		for candidate in $candidates[2..]
+			if [ "$candidates[1]/" != (string sub --length=$cut_length $candidate)/ ]
+				set -l user_selected ""
+
+				if [ "$better_cd_disable_fuzzy_tiebreak" != true ] && command -vq fzf
+					set user_selected (
+						printf "%s\n" $candidates \
+						| fzf --reverse --height=20% --min-height=7 \
+						  --info=inline --header="Multiple paths matched...")
+				end
+
+				if [ -z "$user_selected" ]
+					builtin cd $argv
+					return $status
+				end
+
+				builtin cd "$user_selected"
+				return $status
+			end
+		end
+
+		# At this point, they're all children of a parent. Select the parent.
+		builtin cd $candidates[1]
+		return $status	
 	end	
 	
 	# Default to the original behaviour.
@@ -87,10 +88,26 @@ function cd -d "Change the current working directory"
 	return $status
 end
 
-function __bettercd_candidates --description "Get candidates for fuzzy cd"
+function __bettercd_candidates_z --description "Get candidates for fuzzy cd (from z)"
+	if [ "$better_cd_fuzzy_with_z" != "true" ] || not functions -q z
+		return 1
+	end
+
+	if [ "$better_cd_fuzzy_with_z_like_z" = "true" ]
+		z --list "$argv[1]" 2>/dev/null | awk '{ print $2 }' | head -n1
+	else
+		z --list "$argv[1]" 2>/dev/null | awk '{ print $2 }'
+	end
+end
+
+function __bettercd_candidates_fzf --description "Get candidates for fuzzy cd (from fzf)"
 	if [ -z "$better_cd_search_depth" ]; set better_cd_search_depth 4; end
 	if [ -z "$better_cd_search_ignore_paths" ]; set better_cd_search_ignore_paths "$HOME/Library" "$HOME/Downloads"; end
 	if [ -z "$better_cd_search_ignore_names" ]; set better_cd_search_ignore_names "*.app" "*.localized" "*.photoslibrary"; end
+
+	if [ "$better_cd_fuzzy_with_fzf" != "true" ] || not command -vq fzf || not command -vq fd
+		return 1
+	end
 
 	# Split into a serach root and search term (so we can search parents)
 	set -l regex_escaped_home (string escape --style=regex "$HOME")
@@ -125,11 +142,9 @@ function __bettercd_candidates --description "Get candidates for fuzzy cd"
 
 	fd . --type=d --maxdepth="$better_cd_search_depth" $excluded \
 		| fzf --filter "$search_term" \
-		| sed 's/^\.\//'(string replace --all '/' '\/' (string escape --style=regex $search_root))/ \
-		| sort
+		| sed 's/^\.\//'(string replace --all '/' '\/' (string escape --style=regex $search_root))/
 
 	cd "$old_pwd"
-
 end
 
 function cdno --description "Undo the last `cd`"
