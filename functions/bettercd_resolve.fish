@@ -290,27 +290,33 @@ function __bettercd_tiebreak_with_z --description "[internal] Tiebreak candidate
 	set -l candidates $argv
 
 	perl -e '
+		use Cwd;
 		my $handle;
 		
 		# Read the database into a map.
 		my %database;
 		open $handle, "<", $ARGV[1];
 		while (<$handle>) {
+			$_ =~ s/\n$//;
 			my ($weight, $entry) = split / +/,$_,2;
 			$database{$entry} = $weight;
 		}
 		close $handle;
-
+		
 		# Find the best candidate.
 		open $handle, "<", $ARGV[0];
 		my $best_weight = 0;
 		my $best_path = "";
+		my $cwd = getcwd();
 		while (<$handle>) {
-			if (exists $database{$_}) {
-				my $weight = $database{$_};
+			$_ =~ s/\n$//;
+			my $target = $_;
+			my $full_target = $cwd . "/" . $target;
+			if (exists $database{$full_target}) {
+				my $weight = $database{$full_target};
 				if ($weight gt $best_weight) {
 					$best_weight = $weight;
-					$best_path   = $_;
+					$best_path   = $target;
 				}
 			}
 		}
