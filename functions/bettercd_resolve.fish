@@ -117,10 +117,31 @@ function __bettercd_resolve_do --description "[internal] Resolves a cd path"
 	# If there are multiple candidates, defer to tiebreakers.
 	for tiebreak_name in $tiebreak
 		printf "[tiebreak] trying tiebreaker '%s'\n" "$tiebreak_name" 1>&3
+		set -l tiebreaker_status
+		set -l tiebreaker_results
+
 		if test -n "$_flag_debug"
-			"__bettercd_tiebreak_with_$tiebreak_name" -- $candidates 3>&2 && return 0
+			set tiebreaker_results ("__bettercd_tiebreak_with_$tiebreak_name" -- $candidates 3>&2)
+			set tiebreaker_status $status
 		else
-			"__bettercd_tiebreak_with_$tiebreak_name" -- $candidates 3>/dev/null && return 0
+			set tiebreaker_results ("__bettercd_tiebreak_with_$tiebreak_name" -- $candidates 3>/dev/null)
+			set tiebreaker_status $status
+		end
+
+		if test "$tiebreaker_status" -eq 0
+			set -l tiebreaker_results_count (count $tiebreaker_results)
+			if test $tiebreaker_results_count -eq 1
+				# If it's a single result, that's what it resolved down to.
+				printf "[tiebreak] tiebreaker returned match\n" 1>&3
+				echo $tiebreaker_results
+				return 0
+			else if test $tiebreaker_results_count -ge 2
+				printf "[tiebreak] tiebreaker returned subset\n" 1>&3
+				# If it's multiple results, filter down the list for the next resolver.
+				set candidates $tiebreaker_results
+			else
+				printf "[tiebreak] tiebreaker returned nothing\n" 1>&3
+			end
 		end
 	end
 
