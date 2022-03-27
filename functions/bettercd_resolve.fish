@@ -267,7 +267,7 @@ function __bettercd_tiebreak_with_common --description "[internal] Tiebreak cand
 	printf "[tiebreak:common] expecting parent '%s'\n" "$parent" 1>&3 
 
 	for candidate in $candidates
-		if test (string sub --length=$parent_len -- "$candidate/" != "$parent")
+		if test (string sub --length=$parent_len -- "$candidate/") != "$parent"
 			return 0
 		end 
 	end
