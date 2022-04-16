@@ -13,7 +13,7 @@ function __bettercd_complete
 end
 
 function __bettercd_complete_git
-	set -l repo_root (git rev-parse --show-toplevel)
+	set -l repo_root (git rev-parse --show-toplevel 2>/dev/null)
 	if test $status -ne 0
 		return 1
 	end
